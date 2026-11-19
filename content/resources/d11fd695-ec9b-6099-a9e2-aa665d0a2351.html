@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reto Bioquim - Bioquim Inesante 2.0</title>
+<style>
+  :root { --navy:#16213F; --teal:#0E7C86; --pale:#F4F7FA; --light:#D8EEF2; --amber:#F2A541; --grey:#4A5365; --ok:#1E7B45; --bad:#B3261E; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Arial, Helvetica, sans-serif; color:var(--navy); background:#fff; }
+  h1 { font-size:1.15rem; margin:0; padding:.6rem .9rem; background:var(--navy); color:#fff; }
+  .wrap { padding:.7rem .9rem 1rem; max-width:760px; margin:0 auto; }
+  .hud { display:flex; flex-wrap:wrap; gap:.5rem 1rem; align-items:center; justify-content:space-between; margin-bottom:.6rem; }
+  .pill { background:var(--pale); border:2px solid var(--navy); border-radius:6px; padding:.25rem .6rem; font-weight:bold; font-size:.92rem; }
+  .vidas { font-size:1.25rem; letter-spacing:.1rem; }
+  .prog { height:8px; background:var(--pale); border-radius:4px; overflow:hidden; border:1px solid #9AA5B8; margin-bottom:.8rem; }
+  .prog > div { height:100%; background:var(--teal); width:0; transition:width .3s; }
+  .tipo { font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; color:var(--teal); font-weight:bold; margin:0 0 .2rem; }
+  .preg { font-size:1.08rem; font-weight:bold; margin:.1rem 0 .7rem; line-height:1.4; }
+  .opts { display:grid; gap:.5rem; }
+  .opt { font:inherit; text-align:left; padding:.65rem .8rem; border:2px solid var(--navy); background:#fff; color:var(--navy); border-radius:8px; cursor:pointer; font-size:1rem; }
+  .opt:hover:not(:disabled) { background:var(--light); }
+  .opt:disabled { cursor:default; }
+  .opt.ok { background:#E3F4EA; border-color:var(--ok); }
+  .opt.bad { background:#FBE6E4; border-color:var(--bad); }
+  button:focus-visible { outline:3px solid var(--amber); outline-offset:2px; }
+  .btn { font:inherit; font-weight:bold; margin-top:.8rem; padding:.5rem 1.1rem; border:2px solid var(--navy); background:var(--navy); color:#fff; border-radius:6px; cursor:pointer; }
+  .btn.sec { background:#fff; color:var(--navy); }
+  .fb { margin-top:.8rem; padding:.6rem .75rem; border-left:5px solid var(--teal); background:var(--light); border-radius:4px; font-size:.95rem; line-height:1.45; }
+  .fb.ok { border-left-color:var(--ok); background:#E3F4EA; }
+  .fb.bad { border-left-color:var(--bad); background:#FBE6E4; }
+  .end { text-align:center; padding:1rem .5rem; }
+  .end .big { font-size:2.2rem; font-weight:bold; margin:.2rem 0; }
+  .calc { font-family:"Courier New", monospace; font-size:.95rem; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<h1>Reto Bioquim: calcula, clasifica y gana · Bioquim Inesante 2.0</h1>
+<div class="wrap">
+  <section id="inicio">
+    <p><strong>Cómo se juega:</strong> responde 10 preguntas sobre concentración, dilución, pH, difusión y ósmosis. Los números cambian cada vez que juegas, así que no sirve memorizar las respuestas.</p>
+    <ul>
+      <li>Empiezas con <strong>3 vidas</strong> (♥). Si fallas, pierdes una.</li>
+      <li>Cada acierto da <strong>10 puntos</strong>. Desde el tercer acierto seguido ganas <strong>5 puntos extra</strong> por racha.</li>
+      <li>Después de cada respuesta verás cómo se resuelve. Ten a mano la calculadora y tu cuaderno.</li>
+    </ul>
+    <button class="btn" id="jugar" type="button">Empezar el reto</button>
+  </section>
+
+  <section id="juego" hidden>
+    <div class="hud">
+      <span class="pill" id="hNum">Pregunta 1 de 10</span>
+      <span class="pill" id="hPts">Puntos: 0</span>
+      <span class="pill vidas" id="hVidas" aria-label="Vidas: 3">♥♥♥</span>
+    </div>
+    <div class="prog" aria-hidden="true"><div id="barra"></div></div>
+    <p class="tipo" id="tipo"></p>
+    <p class="preg" id="preg"></p>
+    <div class="opts" id="opts" role="group" aria-label="Opciones de respuesta"></div>
+    <div class="fb" id="fb" role="status" aria-live="polite" hidden></div>
+    <button class="btn" id="sig" type="button" hidden>Siguiente</button>
+  </section>
+
+  <section id="fin" class="end" hidden>
+    <p class="big" id="finTitulo"></p>
+    <p id="finTexto"></p>
+    <button class="btn" id="otra" type="button">Jugar otra vez</button>
+  </section>
+</div>
+<script>
+(function(){
+  function rnd(a){ return a[Math.floor(Math.random()*a.length)]; }
+  function mezclar(a){ a=a.slice(); for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;} return a; }
+  function fmt(x, dec){ // número con coma decimal
+    var n = Number(x.toFixed(dec===undefined?3:dec));
+    return String(n).replace('.', ',');
+  }
+  function unicas(correcta, otras){ // devuelve opciones únicas (texto) con la correcta incluida
+    var vistos = {}; vistos[correcta] = 1; var res = [correcta];
+    otras.forEach(function(o){ if(!vistos[o]){ vistos[o]=1; res.push(o);} });
+    return res;
+  }
+  function pregunta(tipo, texto, correcta, otras, expl){
+    var ops = unicas(correcta, otras).slice(0,4);
+    return { tipo:tipo, texto:texto, correcta:correcta, ops:mezclar(ops), expl:expl };
+  }
+
+  /* ---------- generadores ---------- */
+  var G = {
+    molaridad: function(){
+      var n = rnd([0.1,0.2,0.25,0.5,0.6,0.8,1.0,1.5,2.0]), V = rnd([0.25,0.5,1,2,4]);
+      var M = n / V;
+      var c = fmt(M)+' mol/L';
+      return pregunta('Concentración',
+        'Se disuelven '+fmt(n)+' mol de soluto en agua hasta completar '+fmt(V)+' L de solución. ¿Cuál es la molaridad?',
+        c, [fmt(V/n)+' mol/L', fmt(n*V)+' mol/L', fmt(M*2)+' mol/L', fmt(M/2)+' mol/L', fmt(M*10)+' mol/L', fmt(M+0.5)+' mol/L'],
+        '<span class="calc">M = n / V = '+fmt(n)+' mol / '+fmt(V)+' L = '+fmt(M)+' mol/L</span>. Divides los moles entre el volumen de la solución, en litros.');
+    },
+    masa: function(){
+      var M = rnd([0.1,0.2,0.5,1.0]), V = rnd([100,250,500,1000]);
+      var n = M*V/1000, m = n*58.44;
+      var c = fmt(m,2)+' g';
+      return pregunta('Preparación de soluciones',
+        '¿Cuántos gramos de NaCl (Mᵣ = 58,44 g/mol) necesitas para preparar '+V+' mL de solución '+fmt(M)+' mol/L?',
+        c, [fmt(m*10,2)+' g', fmt(m/10,2)+' g', fmt(m*2,2)+' g', fmt(m/2,2)+' g', fmt(m*5,2)+' g'],
+        '<span class="calc">n = M·V = '+fmt(M)+' × '+fmt(V/1000)+' = '+fmt(n,4)+' mol; m = n·Mᵣ = '+fmt(n,4)+' × 58,44 = '+fmt(m,2)+' g</span>. Recuerda pasar los mL a litros.');
+    },
+    dilucion: function(){
+      var C1 = rnd([1,2,5]), F = rnd([2,4,5,10]), V2 = rnd([100,200,250,500]);
+      var C2 = C1/F, V1 = V2/F;
+      var c = fmt(V1,1)+' mL';
+      return pregunta('Dilución',
+        'Quieres preparar '+V2+' mL de solución '+fmt(C2)+' M a partir de una solución patrón '+fmt(C1)+' M. ¿Qué volumen de la patrón debes tomar?',
+        c, [fmt(V2-V1,1)+' mL', fmt(V2,1)+' mL', fmt(V1*2,1)+' mL', fmt(V1/2,1)+' mL', fmt(V1*3,1)+' mL', fmt(V1+10,1)+' mL'],
+        '<span class="calc">C₁·V₁ = C₂·V₂ → V₁ = ('+fmt(C2)+' × '+V2+') / '+fmt(C1)+' = '+fmt(V1,1)+' mL</span>. Tomas ese volumen y completas con agua hasta '+V2+' mL.');
+    },
+    ph: function(){
+      var k = rnd([1,2,3,4,5,6,8,9,10,11,12,13]);
+      var c = String(k);
+      return pregunta('pH',
+        'Una solución tiene [H₃O⁺] = 1 × 10⁻'+sup(k)+' mol/L. ¿Cuál es su pH?',
+        c, [String(14-k), String(k+1), String(Math.max(k-1,0)), String(7), String(k+2)],
+        '<span class="calc">pH = −log(10<sup>−'+k+'</sup>) = '+k+'</span>. '+(k<7?'Como es menor que 7, la solución es ácida.':'Como es mayor que 7, la solución es básica.'));
+    },
+    phdif: function(){
+      var a = rnd([1,2,3,4,5]), d = rnd([1,2,3]), b = a + d;
+      var c = String(Math.pow(10,d));
+      return pregunta('pH',
+        '¿Cuántas veces más iones H₃O⁺ tiene una solución de pH '+a+' que una de pH '+b+'?',
+        c, [String(d), String(Math.pow(10,d+1)), String(Math.pow(10,d)/2), String(d*10), String(Math.pow(10,d)*2)],
+        'La escala de pH es logarítmica: cada unidad es un factor de 10. Hay '+d+(d===1?' unidad':' unidades')+' de diferencia, así que 10<sup>'+d+'</sup> = '+Math.pow(10,d)+' veces más H₃O⁺ en la de pH '+a+'.');
+    },
+    tonicidad: function(){
+      var x = rnd([0.1,0.2,0.5,0.9,1.5,2.5,3.0]);
+      var cl = x < 0.9 ? 'Hipotónico' : x > 0.9 ? 'Hipertónico' : 'Isotónico';
+      return pregunta('Ósmosis',
+        'Un glóbulo rojo (con 0,9 % de NaCl en su interior) se coloca en una solución de NaCl al '+fmt(x,1)+' %. Ese medio es:',
+        cl, ['Hipotónico','Isotónico','Hipertónico','Saturado'].filter(function(z){return z!==cl;}),
+        'Se compara el soluto del medio con el de la célula (0,9 %). '+fmt(x,1)+' % '+(x<0.9?'es menor':(x>0.9?'es mayor':'es igual'))+', así que el medio es <strong>'+cl.toLowerCase()+'</strong>.');
+    },
+    efecto: function(){
+      var x = rnd([0.2,0.5,1.5,2.5,3.0,0.9]);
+      var ef = x < 0.9 ? 'Entra agua y se hincha' : x > 0.9 ? 'Sale agua y se arruga' : 'Conserva su forma';
+      return pregunta('Ósmosis',
+        '¿Qué le pasa a un glóbulo rojo (0,9 % de NaCl adentro) en una solución de NaCl al '+fmt(x,1)+' %?',
+        ef, ['Entra agua y se hincha','Sale agua y se arruga','Conserva su forma','Se detiene la ósmosis y no pasa nada'].filter(function(z){return z!==ef;}),
+        'El agua se mueve hacia donde hay más soluto. '+(x<0.9?'Afuera hay menos soluto: el agua entra a la célula (medio hipotónico) y puede llegar a romperse.':(x>0.9?'Afuera hay más soluto: el agua sale de la célula (medio hipertónico) y se arruga.':'Hay la misma cantidad de soluto: medio isotónico, entra y sale la misma cantidad de agua.')));
+    },
+    transporte: function(){
+      var B = [
+        ['El oxígeno atraviesa la capa de lípidos de la membrana sin ayuda de proteínas y a favor de su gradiente.','Difusión simple','Es una molécula pequeña y sin carga que cruza directamente.'],
+        ['El Na⁺ cruza por un canal de fuga, a favor de su gradiente y sin gastar ATP.','Difusión facilitada','Pasa con ayuda de una proteína canal, pero sin energía.'],
+        ['La bomba Na⁺/K⁺ saca Na⁺ de la célula en contra de su gradiente y usa ATP.','Transporte activo','Ir en contra del gradiente exige energía (ATP).'],
+        ['El agua pasa por una membrana semipermeable hacia la zona con más soluto.','Ósmosis','Es el paso de agua, no de soluto, hacia donde hay más soluto.'],
+        ['El dióxido de carbono sale de la célula a favor de su gradiente, sin proteínas ni energía.','Difusión simple','Es una molécula pequeña y sin carga que cruza directamente.'],
+        ['El K⁺ entra a la célula en contra de su gradiente gracias a la bomba Na⁺/K⁺ y al ATP.','Transporte activo','Contra el gradiente = transporte activo, con ATP.']
+      ];
+      var q = rnd(B);
+      return pregunta('Transporte de membrana', q[0]+' ¿De qué tipo de transporte se trata?',
+        q[1], ['Difusión simple','Difusión facilitada','Transporte activo','Ósmosis'].filter(function(z){return z!==q[1];}), q[2]);
+    },
+    difusion: function(){
+      var B = [
+        ['Se calienta un gas dentro de una caja. ¿Qué pasa con la rapidez de difusión de sus partículas?','Aumenta','A mayor temperatura, las partículas se mueven más rápido y la difusión es más veloz.'],
+        ['Se enfría un gas dentro de una caja. ¿Qué pasa con la rapidez de difusión de sus partículas?','Disminuye','A menor temperatura, las partículas se mueven más lento.'],
+        ['Cuando las concentraciones de dos lados se igualan, ¿qué pasa con las partículas?','Siguen moviéndose, sin cambio neto','Es el equilibrio dinámico: pasan tantas en un sentido como en el otro.'],
+        ['En un recipiente hay muchas partículas a la izquierda y pocas a la derecha. ¿Hacia dónde habrá un movimiento neto?','De izquierda a derecha','El movimiento neto va de la zona de mayor concentración a la de menor concentración.']
+      ];
+      var q = rnd(B);
+      var pool = ['Aumenta','Disminuye','No cambia','Siguen moviéndose, sin cambio neto','Se detienen por completo','De izquierda a derecha','De derecha a izquierda','No hay movimiento'];
+      var otras = (q[1]==='Aumenta'||q[1]==='Disminuye') ? ['Aumenta','Disminuye','No cambia','Se detienen por completo']
+                : (q[1]==='De izquierda a derecha') ? ['De izquierda a derecha','De derecha a izquierda','No hay movimiento','Sube y baja sin dirección']
+                : ['Siguen moviéndose, sin cambio neto','Se detienen por completo','Todas pasan a un solo lado','Se destruyen'];
+      return pregunta('Difusión', q[0], q[1], otras.filter(function(z){return z!==q[1];}), q[2]);
+    }
+  };
+  function sup(k){ var s={0:'⁰',1:'¹',2:'²',3:'³',4:'⁴',5:'⁵',6:'⁶',7:'⁷',8:'⁸',9:'⁹'}; return String(k).split('').map(function(d){return s[d];}).join(''); }
+
+  function armar(){
+    var base = ['molaridad','masa','dilucion','ph','phdif','tonicidad','efecto','transporte','difusion'];
+    var lista = mezclar(base); lista.push(rnd(['molaridad','dilucion','ph','transporte','tonicidad']));
+    return mezclar(lista).map(function(k){ return G[k](); });
+  }
+
+  /* ---------- estado ---------- */
+  var $ = function(id){ return document.getElementById(id); };
+  var Q, idx, pts, vidas, racha, bloqueado;
+
+  function empezar(){
+    Q = armar(); idx = 0; pts = 0; vidas = 3; racha = 0;
+    $('inicio').hidden = true; $('fin').hidden = true; $('juego').hidden = false;
+    mostrar();
+  }
+  function hud(){
+    $('hNum').textContent = 'Pregunta '+Math.min(idx+1,10)+' de 10';
+    $('hPts').textContent = 'Puntos: '+pts;
+    var h = ''; for (var i=0;i<3;i++) h += i<vidas ? '♥' : '♡';
+    $('hVidas').textContent = h; $('hVidas').setAttribute('aria-label','Vidas: '+vidas);
+    $('barra').style.width = (idx/10*100)+'%';
+  }
+  function mostrar(){
+    var q = Q[idx]; bloqueado = false;
+    $('tipo').textContent = q.tipo; $('preg').textContent = q.texto;
+    var cont = $('opts'); cont.innerHTML = '';
+    q.ops.forEach(function(t){
+      var b = document.createElement('button'); b.type='button'; b.className='opt'; b.textContent = t;
+      b.addEventListener('click', function(){ responder(b, t); });
+      cont.appendChild(b);
+    });
+    $('fb').hidden = true; $('sig').hidden = true; hud();
+  }
+  function responder(btn, t){
+    if (bloqueado) return; bloqueado = true;
+    var q = Q[idx], ok = (t === q.correcta);
+    var bs = $('opts').querySelectorAll('button');
+    for (var i=0;i<bs.length;i++){
+      bs[i].disabled = true;
+      if (bs[i].textContent === q.correcta) bs[i].classList.add('ok');
+    }
+    var fb = $('fb');
+    if (ok) {
+      racha++; var extra = racha >= 3 ? 5 : 0; pts += 10 + extra;
+      fb.className = 'fb ok';
+      fb.innerHTML = '<strong>¡Correcto!</strong> +10 puntos'+(extra?' y +5 por racha de '+racha+' aciertos':'')+'.<br>'+q.expl;
+    } else {
+      btn.classList.add('bad'); vidas--; racha = 0;
+      fb.className = 'fb bad';
+      fb.innerHTML = '<strong>No es esa.</strong> La respuesta correcta es <strong>'+q.correcta+'</strong>.<br>'+q.expl;
+    }
+    fb.hidden = false; hud();
+    var sig = $('sig'); sig.hidden = false;
+    sig.textContent = (vidas === 0 || idx === 9) ? 'Ver resultado' : 'Siguiente';
+    sig.focus();
+  }
+  function siguiente(){
+    if (vidas === 0 || idx === 9) { terminar(); return; }
+    idx++; mostrar(); $('preg').scrollIntoView({block:'nearest'});
+  }
+  function terminar(){
+    $('juego').hidden = true; $('fin').hidden = false;
+    var gano = vidas > 0 && idx === 9;
+    var rango = pts >= 120 ? 'Químico/a experto/a' : pts >= 80 ? 'Laboratorista avanzado/a' : pts >= 40 ? 'Aprendiz de laboratorio' : 'Aprendiz: a repasar';
+    $('finTitulo').textContent = (gano ? '¡Reto completado!' : 'Te quedaste sin vidas') + ' · ' + pts + ' puntos';
+    $('finTexto').innerHTML = 'Tu nivel: <strong>' + rango + '</strong>.<br>' +
+      (gano ? 'Respondiste las 10 preguntas con ' + vidas + ' vida(s) restante(s).' : 'Llegaste hasta la pregunta ' + (idx+1) + ' de 10.') +
+      '<br>Repasa en el RED las prácticas donde fallaste y vuelve a jugar: las preguntas y los números cambian cada vez.';
+    $('otra').focus();
+  }
+
+  $('jugar').addEventListener('click', empezar);
+  $('sig').addEventListener('click', siguiente);
+  $('otra').addEventListener('click', empezar);
+
+  /* para pruebas automáticas */
+  window.__retoTest = function(){ var r=[]; for (var i=0;i<300;i++){ armar().forEach(function(q){ r.push(q); }); } return r; };
+})();
+</script>
+</body>
+</html>

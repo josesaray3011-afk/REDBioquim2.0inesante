@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memoria Bioquim - Bioquim Inesante 2.0</title>
+<style>
+  :root { --navy:#16213F; --teal:#0E7C86; --pale:#F4F7FA; --light:#D8EEF2; --amber:#F2A541; --grey:#4A5365; --ok:#1E7B45; --termc:#0E7C86; --defc:#7A4EAB; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Arial, Helvetica, sans-serif; color:var(--navy); background:#fff; }
+  h1 { font-size:1.15rem; margin:0; padding:.6rem .9rem; background:var(--navy); color:#fff; }
+  .wrap { padding:.7rem .9rem 1rem; }
+  .intro { margin:.2rem 0 .6rem; font-size:.95rem; }
+  .bar { display:flex; flex-wrap:wrap; gap:.6rem 1rem; align-items:center; margin-bottom:.6rem; }
+  .bar label { font-weight:bold; font-size:.92rem; }
+  select { font:inherit; padding:.3rem; }
+  .stat { background:var(--pale); border:2px solid var(--navy); border-radius:6px; padding:.25rem .6rem; font-weight:bold; font-size:.92rem; }
+  .btn { font:inherit; font-weight:bold; padding:.4rem .9rem; border:2px solid var(--navy); background:#fff; color:var(--navy); border-radius:6px; cursor:pointer; }
+  .btn:hover { background:var(--light); }
+  button:focus-visible, select:focus-visible { outline:3px solid var(--amber); outline-offset:2px; }
+  .grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:.5rem; }
+  @media (max-width:640px) { .grid { grid-template-columns:repeat(2, 1fr); } }
+  .card { position:relative; min-height:92px; padding:.35rem; border:3px solid var(--navy); border-radius:10px; cursor:pointer; font:inherit; font-size:.82rem; line-height:1.25;
+    background:var(--navy); color:#fff; display:flex; align-items:center; justify-content:center; text-align:center; }
+  .card .back { font-size:1.8rem; font-weight:bold; }
+  .card .face { display:none; }
+  .card.open, .card.done { cursor:default; }
+  .card.open .back, .card.done .back { display:none; }
+  .card.open .face, .card.done .face { display:block; }
+  .card.term.open, .card.term.done { background:var(--termc); border-color:var(--termc); color:#fff; font-weight:bold; font-size:.95rem; }
+  .card.def.open, .card.def.done { background:#F0E9F8; border-color:var(--defc); color:var(--navy); }
+  .card.done { opacity:.92; border-style:dashed; }
+  .card.wrong { animation:shake .35s; }
+  @keyframes shake { 25% { transform:translateX(-5px); } 75% { transform:translateX(5px); } }
+  @media (prefers-reduced-motion: reduce) { .card.wrong { animation:none; } }
+  .status { margin-top:.7rem; padding:.55rem .7rem; background:var(--light); border-left:5px solid var(--teal); border-radius:4px; font-size:.95rem; min-height:3rem; }
+  .win { border-left-color:var(--ok); background:#E3F4EA; }
+  .legend { font-size:.82rem; color:var(--grey); margin-top:.5rem; }
+  .sw { display:inline-block; width:.9rem; height:.9rem; border-radius:3px; vertical-align:middle; margin:0 .2rem 0 .4rem; }
+</style>
+</head>
+<body>
+<h1>Memoria Bioquim · Bioquim Inesante 2.0</h1>
+<div class="wrap">
+  <p class="intro"><strong>Cómo se juega:</strong> voltea dos cartas. Una tiene un <strong>término</strong> y la otra su <strong>significado</strong>. Si van juntas, se quedan abiertas; si no, se vuelven a tapar. Encuentra todas las parejas con el menor número de intentos.</p>
+  <div class="bar">
+    <label for="nivel">Nivel:</label>
+    <select id="nivel">
+      <option value="6">Fácil (6 parejas)</option>
+      <option value="8" selected>Normal (8 parejas)</option>
+      <option value="12">Difícil (12 parejas)</option>
+    </select>
+    <button class="btn" id="nuevo" type="button">Juego nuevo</button>
+    <span class="stat" id="stInt">Intentos: 0</span>
+    <span class="stat" id="stPar">Parejas: 0 de 8</span>
+    <span class="stat" id="stTime">Tiempo: 0 s</span>
+  </div>
+  <div class="grid" id="grid" role="group" aria-label="Cartas del juego de memoria"></div>
+  <p class="legend"><span class="sw" style="background:var(--termc)"></span>término <span class="sw" style="background:#F0E9F8;border:2px solid var(--defc)"></span>significado</p>
+  <div class="status" id="status" role="status" aria-live="polite">Pulsa una carta para empezar.</div>
+</div>
+<script>
+(function(){
+  var BANCO = [
+    ["Soluto", "Sustancia que se disuelve en el solvente."],
+    ["Solvente", "Medio en el que se disuelve el soluto; casi siempre agua."],
+    ["Molaridad", "Moles de soluto por litro de solución (mol/L)."],
+    ["Dilución", "Agregar solvente para bajar la concentración: C₁·V₁ = C₂·V₂."],
+    ["Solución saturada", "Ya no puede disolver más soluto a esa temperatura."],
+    ["pH", "Medida de acidez: pH = −log [H₃O⁺]."],
+    ["Ácido", "Solución con pH menor que 7."],
+    ["Difusión", "Paso de partículas desde donde hay más hacia donde hay menos."],
+    ["Equilibrio dinámico", "Las partículas siguen moviéndose, pero sin cambio neto."],
+    ["Ósmosis", "Paso de agua a través de una membrana semipermeable."],
+    ["Hipotónico", "Menos soluto afuera que adentro: la célula animal se hincha."],
+    ["Isotónico", "Igual cantidad de soluto: la célula conserva su forma."],
+    ["Hipertónico", "Más soluto afuera: la célula animal se arruga."],
+    ["Plasmólisis", "La membrana de una célula vegetal se separa de la pared."],
+    ["Transporte activo", "En contra del gradiente y con gasto de ATP."],
+    ["Difusión facilitada", "A favor del gradiente, con ayuda de una proteína y sin ATP."]
+  ];
+  var grid = document.getElementById('grid'), status = document.getElementById('status');
+  var stInt = document.getElementById('stInt'), stPar = document.getElementById('stPar'), stTime = document.getElementById('stTime');
+  var nivel = document.getElementById('nivel');
+  var cards, abiertas, intentos, pares, total, t0, timer, bloqueo;
+
+  function mezclar(a){ for (var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+
+  function nuevo(){
+    clearInterval(timer); timer = null; t0 = null;
+    total = parseInt(nivel.value, 10);
+    var elegidas = mezclar(BANCO.map(function(_,i){return i;})).slice(0, total);
+    cards = [];
+    elegidas.forEach(function(i){
+      cards.push({par:i, tipo:'term', texto:BANCO[i][0]});
+      cards.push({par:i, tipo:'def',  texto:BANCO[i][1]});
+    });
+    mezclar(cards);
+    abiertas = []; intentos = 0; pares = 0; bloqueo = false;
+    grid.innerHTML = '';
+    cards.forEach(function(c, n){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'card ' + c.tipo;
+      b.setAttribute('aria-label', 'Carta ' + (n+1) + ', tapada');
+      b.innerHTML = '<span class="back" aria-hidden="true">?</span><span class="face"></span>';
+      b.querySelector('.face').textContent = c.texto;
+      b.addEventListener('click', function(){ voltear(n); });
+      c.el = b; c.estado = 'tapada';
+      grid.appendChild(b);
+    });
+    status.className = 'status';
+    status.textContent = 'Pulsa una carta para empezar.';
+    act();
+  }
+
+  function act(){
+    stInt.textContent = 'Intentos: ' + intentos;
+    stPar.textContent = 'Parejas: ' + pares + ' de ' + total;
+    stTime.textContent = 'Tiempo: ' + (t0 ? Math.round((Date.now()-t0)/1000) : 0) + ' s';
+  }
+
+  function voltear(n){
+    var c = cards[n];
+    if (bloqueo || c.estado !== 'tapada') return;
+    if (!t0) { t0 = Date.now(); timer = setInterval(act, 1000); }
+    c.estado = 'abierta'; c.el.classList.add('open');
+    c.el.setAttribute('aria-label', (c.tipo === 'term' ? 'Término: ' : 'Significado: ') + c.texto);
+    abiertas.push(n);
+    if (abiertas.length === 2) {
+      intentos++;
+      var a = cards[abiertas[0]], b = cards[abiertas[1]];
+      if (a.par === b.par && a.tipo !== b.tipo) {
+        a.estado = b.estado = 'lista';
+        a.el.classList.remove('open'); b.el.classList.remove('open');
+        a.el.classList.add('done'); b.el.classList.add('done');
+        a.el.setAttribute('aria-label', 'Pareja encontrada: ' + a.texto); b.el.setAttribute('aria-label', 'Pareja encontrada: ' + b.texto);
+        pares++; abiertas = [];
+        var term = a.tipo === 'term' ? a : b, def = a.tipo === 'term' ? b : a;
+        status.className = 'status';
+        status.textContent = '¡Pareja! ' + term.texto + ': ' + def.texto;
+        if (pares === total) fin();
+      } else {
+        bloqueo = true;
+        a.el.classList.add('wrong'); b.el.classList.add('wrong');
+        status.className = 'status';
+        status.textContent = 'No son pareja. Recuerda dónde está cada carta e inténtalo de nuevo.';
+        setTimeout(function(){
+          [a,b].forEach(function(x){ x.estado='tapada'; x.el.classList.remove('open','wrong'); x.el.setAttribute('aria-label','Carta tapada'); });
+          abiertas = []; bloqueo = false;
+        }, 1100);
+      }
+      act();
+    }
+  }
+
+  function fin(){
+    clearInterval(timer);
+    var seg = Math.round((Date.now()-t0)/1000);
+    var ideal = total, ratio = intentos / ideal;
+    var nota = ratio <= 1.6 ? 'Memoria de científico/a: casi sin errores.' : ratio <= 2.5 ? 'Muy bien: ya dominas la mayoría de los términos.' : 'Lo lograste. Repite el juego para mejorar tus intentos y repasa el glosario.';
+    status.className = 'status win';
+    status.textContent = '¡Completaste el juego en ' + intentos + ' intentos y ' + seg + ' segundos! ' + nota;
+    act();
+  }
+
+  document.getElementById('nuevo').addEventListener('click', nuevo);
+  nivel.addEventListener('change', nuevo);
+  nuevo();
+})();
+</script>
+</body>
+</html>

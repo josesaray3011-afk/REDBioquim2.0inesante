@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laboratorio de ósmosis - Bioquim Inesante 2.0</title>
+<style>
+  :root { --navy:#16213F; --teal:#0E7C86; --pale:#F4F7FA; --light:#D8EEF2; --amber:#F2A541; --grey:#4A5365; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Arial, Helvetica, sans-serif; color:var(--navy); background:#fff; }
+  h1 { font-size:1.15rem; margin:0; padding:.6rem .9rem; background:var(--navy); color:#fff; }
+  .tabs { display:flex; gap:.4rem; padding:.6rem .9rem 0; border-bottom:3px solid var(--teal); flex-wrap:wrap; }
+  .tabs button { font:inherit; font-weight:bold; border:2px solid var(--teal); border-bottom:none; background:#fff; color:var(--teal);
+    padding:.45rem .9rem; border-radius:8px 8px 0 0; cursor:pointer; }
+  .tabs button[aria-selected="true"] { background:var(--teal); color:#fff; }
+  .tabs button:focus-visible, input:focus-visible, select:focus-visible, .btn:focus-visible { outline:3px solid var(--amber); outline-offset:2px; }
+  .panel { padding:.8rem .9rem 1rem; }
+  .panel[hidden] { display:none; }
+  .row { display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-start; }
+  .controls { flex:1 1 230px; min-width:220px; }
+  .stage { flex:2 1 320px; min-width:280px; }
+  label { display:block; font-weight:bold; margin:.6rem 0 .15rem; font-size:.92rem; }
+  input[type=range] { width:100%; accent-color:var(--teal); }
+  select { font:inherit; padding:.3rem; width:100%; }
+  .val { font-weight:normal; color:var(--grey); }
+  canvas { width:100%; height:auto; background:var(--pale); border:2px solid var(--navy); border-radius:8px; display:block; }
+  .status { margin-top:.6rem; padding:.55rem .7rem; background:var(--light); border-left:5px solid var(--teal); border-radius:4px; font-size:.95rem; min-height:3.2rem; }
+  .btn { font:inherit; font-weight:bold; margin-top:.8rem; padding:.45rem .9rem; border:2px solid var(--navy); background:#fff; color:var(--navy); border-radius:6px; cursor:pointer; }
+  .btn:hover { background:var(--light); }
+  .note { font-size:.8rem; color:var(--grey); margin-top:.8rem; }
+  table { border-collapse:collapse; width:100%; font-size:.85rem; margin-top:.6rem; }
+  th, td { border:1px solid #9AA5B8; padding:.25rem .4rem; text-align:center; }
+  th { background:var(--pale); }
+</style>
+</head>
+<body>
+<h1>Laboratorio virtual de ósmosis · Bioquim Inesante 2.0</h1>
+<div class="tabs" role="tablist" aria-label="Experimentos">
+  <button role="tab" id="t1" aria-selected="true" aria-controls="p1">1. Tubo en U</button>
+  <button role="tab" id="t2" aria-selected="false" aria-controls="p2">2. Célula en distintos medios</button>
+</div>
+
+<section class="panel" id="p1" role="tabpanel" aria-labelledby="t1">
+  <div class="row">
+    <div class="controls">
+      <p>Una membrana semipermeable separa dos soluciones. Deja pasar el <strong>agua</strong>, pero no el <strong>soluto</strong>.</p>
+      <label for="cL">Concentración del lado izquierdo: <span class="val" id="cLv">0,10 mol/L</span></label>
+      <input type="range" id="cL" min="0" max="1" step="0.05" value="0.1">
+      <label for="cR">Concentración del lado derecho: <span class="val" id="cRv">0,60 mol/L</span></label>
+      <input type="range" id="cR" min="0" max="1" step="0.05" value="0.6">
+      <button class="btn" id="reset1" type="button">Reiniciar niveles</button>
+      <div class="note">Modelo simplificado: la diferencia de altura final es proporcional a la diferencia de concentración.</div>
+    </div>
+    <div class="stage">
+      <canvas id="cv1" width="640" height="400" role="img" aria-label="Tubo en U con membrana semipermeable en el centro. Los niveles de agua cambian según la concentración de cada lado."></canvas>
+      <div class="status" id="st1" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="p2" role="tabpanel" aria-labelledby="t2" hidden>
+  <div class="row">
+    <div class="controls">
+      <label for="ctype">Tipo de célula</label>
+      <select id="ctype">
+        <option value="animal">Animal (glóbulo rojo)</option>
+        <option value="plant">Vegetal (con pared celular)</option>
+      </select>
+      <label for="cm">Concentración de NaCl del medio: <span class="val" id="cmv">0,90 %</span></label>
+      <input type="range" id="cm" min="0" max="3" step="0.1" value="0.9">
+      <p class="note">El interior de la célula equivale a una solución de NaCl de 0,9 % (m/v), el llamado <em>suero fisiológico</em>.</p>
+      <button class="btn" id="add" type="button">Agregar fila a la tabla</button>
+      <table aria-label="Registro de observaciones">
+        <thead><tr><th>Medio (%)</th><th>Tipo</th><th>Tamaño relativo</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table>
+    </div>
+    <div class="stage">
+      <canvas id="cv2" width="640" height="400" role="img" aria-label="Célula dentro de una solución. Su tamaño cambia según la concentración del medio."></canvas>
+      <div class="status" id="st2" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+  var NAVY="#16213F", TEAL="#0E7C86", AMBER="#F2A541";
+  var fmt=function(n,d){return n.toFixed(d).replace('.',',');};
+
+  // ---- tabs
+  var t1=document.getElementById('t1'), t2=document.getElementById('t2'), p1=document.getElementById('p1'), p2=document.getElementById('p2');
+  function show(which){
+    var one=which===1;
+    t1.setAttribute('aria-selected',one); t2.setAttribute('aria-selected',!one);
+    p1.hidden=!one; p2.hidden=one;
+  }
+  t1.onclick=function(){show(1)}; t2.onclick=function(){show(2)};
+
+  // ---- Experimento 1: tubo en U
+  var cv1=document.getElementById('cv1'), g1=cv1.getContext('2d');
+  var cL=document.getElementById('cL'), cR=document.getElementById('cR');
+  var hL=130, hR=130, BASE=130, K=170; // K: px por mol/L de diferencia
+  var dotsL=[], dotsR=[];
+  function seedDots(){
+    dotsL=[];dotsR=[];
+    for(var i=0;i<60;i++){dotsL.push({x:Math.random(),y:Math.random(),vx:(Math.random()-.5)*.004,vy:(Math.random()-.5)*.004});
+      dotsR.push({x:Math.random(),y:Math.random(),vx:(Math.random()-.5)*.004,vy:(Math.random()-.5)*.004});}
+  }
+  seedDots();
+  var X0=70, W=170, GAP=60, YB=340; // columnas
+  function drawTube(){
+    g1.clearRect(0,0,640,400);
+    var xl=X0+30, xr=640-X0-30-W+30; // izquierda y derecha
+    xl=110; xr=640-110-W; // columnas de ancho W
+    var top=40;
+    // líquido izq y der
+    g1.fillStyle="#BFE6EE";
+    g1.fillRect(xl, YB-hL, W, hL); g1.fillRect(xr, YB-hR, W, hR);
+    g1.fillRect(xl+W, YB-40, xr-xl-W, 40); // fondo conectado
+    // solutos
+    var nL=Math.round(parseFloat(cL.value)*60), nR=Math.round(parseFloat(cR.value)*60);
+    g1.fillStyle=AMBER; g1.strokeStyle=NAVY; g1.lineWidth=1;
+    function dots(arr,n,x0,h){
+      for(var i=0;i<n;i++){var d=arr[i]; d.x+=d.vx; d.y+=d.vy;
+        if(d.x<0||d.x>1)d.vx*=-1; if(d.y<0||d.y>1)d.vy*=-1;
+        var px=x0+8+d.x*(W-16), py=YB-8-d.y*(Math.max(h,12)-16);
+        g1.beginPath(); g1.arc(px,py,5,0,6.283); g1.fill(); g1.stroke();}
+    }
+    dots(dotsL,nL,xl,hL); dots(dotsR,nR,xr,hR);
+    // tubo
+    g1.strokeStyle=NAVY; g1.lineWidth=4; g1.beginPath();
+    g1.moveTo(xl,top); g1.lineTo(xl,YB); g1.lineTo(xr+W,YB); g1.lineTo(xr+W,top);
+    g1.moveTo(xl+W,top); g1.lineTo(xl+W,YB-40); g1.lineTo(xr,YB-40); g1.lineTo(xr,top); g1.stroke();
+    // membrana
+    var mx=(xl+W+xr)/2;
+    g1.setLineDash([6,5]); g1.strokeStyle="#B5621B"; g1.lineWidth=4;
+    g1.beginPath(); g1.moveTo(mx,YB-40); g1.lineTo(mx,YB); g1.stroke(); g1.setLineDash([]);
+    g1.fillStyle=NAVY; g1.font="bold 14px Arial"; g1.textAlign="center";
+    g1.fillText("Membrana",mx,YB+20); g1.fillText("semipermeable",mx,YB+36);
+    g1.fillText("Lado izquierdo",xl+W/2,28); g1.fillText("Lado derecho",xr+W/2,28);
+    // flecha de agua
+    var diff=parseFloat(cR.value)-parseFloat(cL.value);
+    if(Math.abs(diff)>0.04){
+      var dir=diff>0?1:-1;
+      g1.fillStyle=TEAL; g1.beginPath();
+      g1.moveTo(mx-dir*24,YB-20-10); g1.lineTo(mx+dir*6,YB-20-10); g1.lineTo(mx+dir*6,YB-20-20); g1.lineTo(mx+dir*28,YB-20); g1.lineTo(mx+dir*6,YB-20+20); g1.lineTo(mx+dir*6,YB-20+10); g1.lineTo(mx-dir*24,YB-20+10); g1.closePath(); g1.fill();
+    }
+    // etiquetas de nivel
+    g1.fillStyle=NAVY; g1.font="13px Arial";
+    g1.fillText(fmt(hL-BASE,0)+" mm", xl+W/2, YB-hL-8); g1.fillText((hR-BASE>=0?"+":"")+fmt(hR-BASE,0)+" mm", xr+W/2, YB-hR-8);
+  }
+  function tick1(){
+    var d=(parseFloat(cR.value)-parseFloat(cL.value))*K;
+    var tL=BASE-d/2, tR=BASE+d/2;
+    tL=Math.max(40,Math.min(250,tL)); tR=Math.max(40,Math.min(250,tR));
+    hL+=(tL-hL)*0.04; hR+=(tR-hR)*0.04;
+    drawTube(); requestAnimationFrame(tick1);
+  }
+  function msg1(){
+    var l=parseFloat(cL.value), r=parseFloat(cR.value);
+    document.getElementById('cLv').textContent=fmt(l,2)+' mol/L';
+    document.getElementById('cRv').textContent=fmt(r,2)+' mol/L';
+    var s;
+    if(Math.abs(r-l)<0.04) s="Las dos soluciones tienen casi la misma concentración (isotónicas): no hay movimiento neto de agua y los niveles se mantienen.";
+    else if(r>l) s="El lado derecho es más concentrado. El agua pasa por ósmosis hacia la derecha y su nivel sube. Diferencia de concentración: "+fmt(r-l,2)+" mol/L.";
+    else s="El lado izquierdo es más concentrado. El agua pasa por ósmosis hacia la izquierda y su nivel sube. Diferencia de concentración: "+fmt(l-r,2)+" mol/L.";
+    document.getElementById('st1').textContent=s;
+  }
+  cL.oninput=cR.oninput=msg1; msg1();
+  document.getElementById('reset1').onclick=function(){hL=hR=BASE;};
+  tick1();
+
+  // ---- Experimento 2: célula
+  var cv2=document.getElementById('cv2'), g2=cv2.getContext('2d');
+  var cm=document.getElementById('cm'), ctype=document.getElementById('ctype');
+  var scale=1, cdots=[];
+  for(var i=0;i<70;i++) cdots.push({x:Math.random()*640,y:Math.random()*400,vx:(Math.random()-.5)*1.2,vy:(Math.random()-.5)*1.2});
+  function targetScale(){
+    var c=parseFloat(cm.value), t=ctype.value;
+    var s=1+0.42*(0.9-c)/0.9;
+    if(t==='plant') s=Math.max(0.5,Math.min(1.0,s)); else s=Math.max(0.55,Math.min(1.45,s));
+    return s;
+  }
+  function drawCell(){
+    var c=parseFloat(cm.value), t=ctype.value;
+    g2.clearRect(0,0,640,400);
+    g2.fillStyle="#D8EEF2"; g2.fillRect(0,0,640,400);
+    var n=Math.round(c/3*70+2);
+    g2.fillStyle="#fff"; g2.strokeStyle=NAVY; g2.lineWidth=1;
+    for(var i=0;i<n;i++){var d=cdots[i]; d.x+=d.vx; d.y+=d.vy; if(d.x<0||d.x>640)d.vx*=-1; if(d.y<0||d.y>400)d.vy*=-1;
+      g2.beginPath(); g2.arc(d.x,d.y,4,0,6.283); g2.fill(); g2.stroke();}
+    var cx=320, cy=200, R=95*scale;
+    if(t==='plant'){
+      g2.strokeStyle="#2E7D32"; g2.lineWidth=10; g2.fillStyle="#E9F6E0";
+      g2.beginPath(); g2.roundRect(cx-120,cy-100,240,200,18); g2.fill(); g2.stroke();
+      g2.fillStyle="#F6D9A8"; g2.strokeStyle=NAVY; g2.lineWidth=3;
+      var w=230*scale, h=190*scale; g2.beginPath(); g2.roundRect(cx-w/2,cy-h/2,w,h,16); g2.fill(); g2.stroke();
+      g2.fillStyle=AMBER; g2.beginPath(); g2.arc(cx,cy,20*scale,0,6.283); g2.fill(); g2.stroke();
+    } else {
+      g2.fillStyle="#F6D9A8"; g2.strokeStyle=NAVY; g2.lineWidth=4;
+      g2.beginPath(); g2.ellipse(cx,cy,R*1.15,R*0.95,0,0,6.283); g2.fill(); g2.stroke();
+      g2.fillStyle=AMBER; g2.beginPath(); g2.arc(cx,cy,20*scale,0,6.283); g2.fill(); g2.stroke();
+    }
+    g2.fillStyle=NAVY; g2.font="bold 15px Arial"; g2.textAlign="left"; g2.fillText("Medio: NaCl "+fmt(c,1)+" %",12,24);
+  }
+  function tick2(){ scale+=(targetScale()-scale)*0.08; drawCell(); requestAnimationFrame(tick2); }
+  function msg2(){
+    var c=parseFloat(cm.value), t=ctype.value;
+    document.getElementById('cmv').textContent=fmt(c,2)+' %';
+    var s;
+    if(Math.abs(c-0.9)<=0.1) s="Medio isotónico: entra y sale la misma cantidad de agua. La célula conserva su forma y su tamaño.";
+    else if(c<0.9){
+      s="Medio hipotónico (menos soluto afuera): el agua entra a la célula por ósmosis. ";
+      if(t==='plant') s+="La vacuola se llena y la célula queda turgente; la pared celular evita que estalle.";
+      else s+=(c<0.3?"Con tan poco soluto la célula se hincha tanto que puede romperse (lisis). ":"La célula se hincha. ");
+    } else {
+      s="Medio hipertónico (más soluto afuera): el agua sale de la célula por ósmosis. ";
+      s+=(t==='plant'?"La membrana se separa de la pared celular (plasmólisis) y la planta se marchita.":"La célula se arruga y pierde volumen (crenación).");
+    }
+    document.getElementById('st2').textContent=s;
+  }
+  cm.oninput=ctype.onchange=msg2; msg2();
+  document.getElementById('add').onclick=function(){
+    var tr=document.createElement('tr'), c=parseFloat(cm.value);
+    [fmt(c,1), ctype.value==='plant'?'vegetal':'animal', fmt(targetScale()*100,0)+' %'].forEach(function(v){var td=document.createElement('td'); td.textContent=v; tr.appendChild(td);});
+    document.getElementById('log').appendChild(tr);
+  };
+  if(!CanvasRenderingContext2D.prototype.roundRect){
+    CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){this.moveTo(x+r,y);this.arcTo(x+w,y,x+w,y+h,r);this.arcTo(x+w,y+h,x,y+h,r);this.arcTo(x,y+h,x,y,r);this.arcTo(x,y,x+w,y,r);this.closePath();};
+  }
+  tick2();
+})();
+</script>
+</body>
+</html>
